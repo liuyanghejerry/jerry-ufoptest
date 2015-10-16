@@ -94,6 +94,7 @@ func thumbImage(r io.Reader, width int, height int) (buf *bytes.Buffer, err erro
 			g.Image[i] = image.NewPaletted(image.Rect(0, 0, width, height), g.Image[i].Palette)
 			draw.Draw(g.Image[i], image.Rect(0, 0, width, height), thumb, image.Pt(0, 0), draw.Over)
 		}
+		g.Config.Width, g.Config.Height = width, height
 		err = gif.EncodeAll(buf, g)
 		if err != nil {
 			log.Println("cannot encode gif", err)
