@@ -2,23 +2,19 @@ package main
 
 import (
 	"encoding/json"
-	"io"
+	// "io"
 	"io/ioutil"
 	"log"
 	"net/http"
 
-	"image"
+	// "image"
 	"bytes"
 
-	// Package image/jpeg is not used explicitly in the code below,
-	// but is imported for its initialization side-effect, which allows
-	// image.Decode to understand JPEG formatted images. Uncomment these
-	// two lines to also understand GIF and PNG images:
 	_ "image/gif"
 	_ "image/png"
-	jpeg "image/jpeg"
+	_ "image/jpeg"
 
-	_ "ufop"
+	"github.com/disintegration/imaging"
 )
 
 type ReqArgs struct {
@@ -30,33 +26,6 @@ type ReqArgs struct {
 		Bucket   string `json:"bucket"`
 		Key      string `json:"key"`
 	} `json: "src"`
-}
-
-func demoHandler(w http.ResponseWriter, req *http.Request) {
-	body, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		w.WriteHeader(400)
-		log.Println("read request body failed:", err)
-		return
-	}
-	var args ReqArgs
-	err = json.Unmarshal(body, &args)
-	if err != nil {
-		w.WriteHeader(400)
-		log.Println("invalid request body:", err)
-		return
-	}
-	resp, err := http.Get(args.Src.Url)
-	if err != nil {
-		w.WriteHeader(400)
-		log.Println("fetch resource failed:", err)
-		return
-	}
-	defer resp.Body.Close()
-	var buf = make([]byte, 512)
-	io.ReadFull(resp.Body, buf)
-	contentType := http.DetectContentType(buf)
-	w.Write([]byte(contentType))
 }
 
 func imageHandler(w http.ResponseWriter, req *http.Request) {
@@ -80,22 +49,25 @@ func imageHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
-	// var buf = make([]byte, 512)
-	// io.ReadFull(resp.Body, buf)
-	// contentType := http.DetectContentType(buf)
-	// w.Write([]byte(contentType))
-	img, _, err := image.Decode(resp.Body)
+
+	img, err := imaging.Decode(resp.Body)
 	if err != nil {
 		w.WriteHeader(400)
 		log.Println("invalid image of the url", err)
 		return
 	}
 
-	croppedImage := image.NewRGBA(img.Bounds())
-	img = croppedImage.SubImage(image.Rect(0, 0, 20, 20))
+	croppedImg := imaging.Fit(img, 100, 100, imaging.Lanczos)
+
+	if err != nil {
+		w.WriteHeader(500)
+		log.Println("cannot crop image", err)
+		return
+	}
 
 	buf := new(bytes.Buffer)
-	err = jpeg.Encode(buf, img, nil)
+	// err = jpeg.Encode(buf, croppedImg, nil)
+	imaging.Encode(buf, croppedImg, imaging.JPEG)
 	if err != nil {
 		w.WriteHeader(500)
 		log.Println("cannot encode jpeg", err)
