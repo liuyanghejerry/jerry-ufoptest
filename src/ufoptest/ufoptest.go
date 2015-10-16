@@ -5,10 +5,10 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
 	"bytes"
 	"strconv"
 	"io"
+	"regexp"
 
 	"image"
 	"image/draw"
@@ -29,20 +29,30 @@ type ReqArgs struct {
 }
 
 func parseCmd(cmd string) (width int, height int) {
-	values, err := url.ParseQuery(cmd)
-	if err != nil {
-		return 100, 100
-	}
+	capWidth := regexp.MustCompile(`\/w\/([0-9]+)`)
+	capHeight := regexp.MustCompile(`\/h\/([0-9]+)`)
 
 	w, h := 100, 100
 
-	w, err = strconv.Atoi(values.Get("w"))
+	results := capWidth.FindStringSubmatch(cmd)
+
+	if len(results) < 2 {
+		w = 100
+	}
+
+	w, err := strconv.Atoi(results[1])
 
 	if err != nil {
 		w = 100
 	}
 
-	h, err = strconv.Atoi(values.Get("h"))
+	results = capHeight.FindStringSubmatch(cmd)
+
+	if len(results) < 2 {
+		h = 100
+	}
+
+	h, err = strconv.Atoi(results[1])
 
 	if err != nil {
 		h = 100
@@ -123,6 +133,7 @@ func imageHandler(w http.ResponseWriter, req *http.Request) {
 	width, height := parseCmd(args.Cmd)
 	log.Println("width, height: ", width, height)
 
+	log.Println("processing url:", args.Src.Url)
 	resp, err := http.Get(args.Src.Url)
 	if err != nil {
 		w.WriteHeader(400)
