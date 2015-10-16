@@ -1,4 +1,0 @@
-image: ubuntu
-build_script:
- - mv $RESOURCE/* .
-run: ./ufoptest
