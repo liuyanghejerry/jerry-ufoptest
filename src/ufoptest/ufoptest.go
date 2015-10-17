@@ -9,12 +9,16 @@ import (
 	"strconv"
 	"io"
 	"regexp"
+	"time"
 
 	"image"
 	"image/draw"
 	"image/gif"
 
 	"github.com/disintegration/imaging"
+
+	"sync"
+	"runtime"
 )
 
 type ReqArgs struct {
@@ -26,6 +30,11 @@ type ReqArgs struct {
 		Bucket   string `json:"bucket"`
 		Key      string `json:"key"`
 	} `json: "src"`
+}
+
+type GifResult struct {
+	Index int
+	Img *image.Paletted
 }
 
 func parseCmd(cmd string) (width int, height int) {
@@ -99,11 +108,33 @@ func thumbImage(r io.Reader, width int, height int) (buf *bytes.Buffer, err erro
 			log.Println("cannot decode gif", err)
 			return nil, err
 		}
+
+		// over-protected version, still slow
+		// c := thumbGif(g, width, height)
+		// for r := range c {
+		// 	g.Image[r.Index] = r.Img
+		// }
+
+		// multiple reader, no wirter to golang map is ok
+		// it's fastest
+		var wg sync.WaitGroup
+		wg.Add(len(g.Image))
 		for i := range g.Image {
-			thumb := imaging.Thumbnail(g.Image[i], width, height, imaging.Lanczos)
-			g.Image[i] = image.NewPaletted(image.Rect(0, 0, width, height), g.Image[i].Palette)
-			draw.Draw(g.Image[i], image.Rect(0, 0, width, height), thumb, image.Pt(0, 0), draw.Over)
+			go func () {
+				thumb := imaging.Thumbnail(g.Image[i], width, height, imaging.Lanczos)
+				g.Image[i] = image.NewPaletted(image.Rect(0, 0, width, height), g.Image[i].Palette)
+				draw.Draw(g.Image[i], image.Rect(0, 0, width, height), thumb, image.Pt(0, 0), draw.Over)
+				wg.Done()
+			}()
 		}
+		wg.Wait()
+
+		// plain single thread version, too slow
+		// for i := range g.Image {
+		// 	thumb := imaging.Thumbnail(g.Image[i], width, height, imaging.Lanczos)
+		// 	g.Image[i] = image.NewPaletted(image.Rect(0, 0, width, height), g.Image[i].Palette)
+		// 	draw.Draw(g.Image[i], image.Rect(0, 0, width, height), thumb, image.Pt(0, 0), draw.Over)
+		// }
 		g.Config.Width, g.Config.Height = width, height
 		err = gif.EncodeAll(buf, g)
 		if err != nil {
@@ -114,7 +145,35 @@ func thumbImage(r io.Reader, width int, height int) (buf *bytes.Buffer, err erro
 	return
 }
 
+// over-protected, skip this solution for now
+// func thumbGif(g *gif.GIF, width int, height int) (<-chan GifResult) {
+// 	var wg sync.WaitGroup
+// 	wg.Add(len(g.Image))
+	
+// 	c := make(chan GifResult)
+// 	for i := 0; i < len(g.Image); i++ {
+// 		go func (img *image.Paletted, index int) {
+// 			defer wg.Done()
+			
+// 			thumb := imaging.Thumbnail(img, width, height, imaging.Lanczos)
+// 			img = image.NewPaletted(image.Rect(0, 0, width, height), img.Palette)
+// 			draw.Draw(img, image.Rect(0, 0, width, height), thumb, image.Pt(0, 0), draw.Over)
+// 			c <- GifResult{
+// 				Index: index,
+// 				Img: img,
+// 			}
+// 		}(g.Image[i], i)
+// 	}
+// 	go func() {
+// 		wg.Wait()
+// 		close(c)
+// 	}()
+
+// 	return c
+// }
+
 func imageHandler(w http.ResponseWriter, req *http.Request) {
+	t0 := time.Now()
 	body, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		w.WriteHeader(400)
@@ -150,9 +209,12 @@ func imageHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	result := buf.Bytes()
 	w.Write(result)
+	t1 := time.Now()
+	log.Println("time elapsed ", t1.Sub(t0))
 }
 
 func main() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
 	http.HandleFunc("/uop", imageHandler)
 	err := http.ListenAndServe(":9100", nil)
 	if err != nil {
