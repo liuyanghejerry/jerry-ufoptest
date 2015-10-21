@@ -120,12 +120,12 @@ func thumbImage(r io.Reader, width int, height int) (buf *bytes.Buffer, err erro
 		var wg sync.WaitGroup
 		wg.Add(len(g.Image))
 		for i := range g.Image {
-			go func () {
-				thumb := imaging.Thumbnail(g.Image[i], width, height, imaging.Lanczos)
-				g.Image[i] = image.NewPaletted(image.Rect(0, 0, width, height), g.Image[i].Palette)
-				draw.Draw(g.Image[i], image.Rect(0, 0, width, height), thumb, image.Pt(0, 0), draw.Over)
+			go func (index int) {
+				thumb := imaging.Thumbnail(g.Image[index], width, height, imaging.Lanczos)
+				g.Image[index] = image.NewPaletted(image.Rect(0, 0, width, height), g.Image[index].Palette)
+				draw.Draw(g.Image[index], image.Rect(0, 0, width, height), thumb, image.Pt(0, 0), draw.Over)
 				wg.Done()
-			}()
+			}(i)
 		}
 		wg.Wait()
 
