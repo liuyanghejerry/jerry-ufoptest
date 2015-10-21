@@ -119,15 +119,20 @@ func thumbImage(r io.Reader, width int, height int) (buf *bytes.Buffer, err erro
 		// it's fastest
 		var wg sync.WaitGroup
 		wg.Add(len(g.Image))
+		imageArray := make([]*image.Paletted, len(g.Image))
 		for i := range g.Image {
+			imageArray[i] = g.Image[i]
 			go func (index int) {
-				thumb := imaging.Thumbnail(g.Image[index], width, height, imaging.Lanczos)
-				g.Image[index] = image.NewPaletted(image.Rect(0, 0, width, height), g.Image[index].Palette)
-				draw.Draw(g.Image[index], image.Rect(0, 0, width, height), thumb, image.Pt(0, 0), draw.Over)
+				thumb := imaging.Thumbnail(imageArray[index], width, height, imaging.Lanczos)
+				imageArray[index] = image.NewPaletted(image.Rect(0, 0, width, height), imageArray[index].Palette)
+				draw.Draw(imageArray[index], image.Rect(0, 0, width, height), thumb, image.Pt(0, 0), draw.Over)
 				wg.Done()
 			}(i)
 		}
 		wg.Wait()
+		for i := range g.Image {
+			g.Image[i] = imageArray[i]
+		}
 
 		// plain single thread version, too slow
 		// for i := range g.Image {
